@@ -17,7 +17,12 @@ jobs:
             mkdir -p temp_unzip
             unzip -q -o lumina.zip -d temp_unzip
             shopt -s dotglob
-            cp -rf temp_unzip/*/* . 2>/dev/null || cp -rf temp_unzip/* .
+            FIRST_DIR=$(ls -d temp_unzip/* | head -n 1)
+            if [ -d "$FIRST_DIR" ]; then
+              cp -rf "$FIRST_DIR"/* .
+            else
+              cp -rf temp_unzip/* .
+            fi
             rm -rf temp_unzip
           fi
 
@@ -35,24 +40,27 @@ jobs:
           flutter create --platforms=android --org app.lumina --project-name lumina .
           rm -f test/widget_test.dart
 
-      - name: Fix Dart Errors
+      - name: Auto-Fix Source Code Bugs
         run: |
           python3 - <<'EOF'
           import pathlib, re
 
-          # Fix 1: Type error di plugin_host.dart
+          # 1. Fix casting type di plugin_host.dart
           p1 = pathlib.Path('lib/core/plugin/plugin_host.dart')
           if p1.exists():
               txt = p1.read_text()
-              txt = txt.replace('if (candidate is T) out.add((plugin, candidate));', 'if (candidate is T) out.add((plugin, candidate as T));')
+              txt = txt.replace('out.add((plugin, candidate));', 'out.add((plugin, candidate as T));')
               p1.write_text(txt)
 
-          # Fix 2: Conflict RepeatMode di now_playing_screen.dart (Beri alias 'pc')
+          # 2. Fix konflik RepeatMode & PlayerController di now_playing_screen.dart
           p2 = pathlib.Path('lib/ui/now_playing/now_playing_screen.dart')
           if p2.exists():
               txt = p2.read_text()
-              txt = re.sub(r"(import\s+['\"][^'\"]*player_controller\.dart['\"])", r"\1 as pc", txt)
+              # Beri alias ke player_controller agar tidak bentrok
+              if "player_controller.dart" in txt and "as pc" not in txt:
+                  txt = re.sub(r"(import\s+['\"][^'\"]*player_controller\.dart['\"])", r"\1 as pc", txt)
               txt = txt.replace('RepeatMode.', 'pc.RepeatMode.')
+              txt = txt.replace('PlayerController', 'pc.PlayerController')
               p2.write_text(txt)
           EOF
 
@@ -61,40 +69,45 @@ jobs:
           python3 - <<'EOF'
           import pathlib, re
           p = pathlib.Path('android/app/src/main/AndroidManifest.xml')
-          s = p.read_text()
-          perms = '''
-              <uses-permission android:name="android.permission.INTERNET"/>
-              <uses-permission android:name="android.permission.WAKE_LOCK"/>
-              <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
-              <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
-          '''
-          s = re.sub(r'<manifest([^>]*)>',
-                     lambda m: '<manifest' + m.group(1) + ' xmlns:tools="http://schemas.android.com/tools">' + perms,
-                     s, count=1)
-          app = '''
-              <meta-data android:name="com.google.android.gms.car.application"
-                  android:resource="@xml/automotive_app_desc"/>
-              <service android:name="com.ryanheise.audioservice.AudioService"
-                  android:foregroundServiceType="mediaPlayback"
-                  android:exported="true" tools:ignore="Instantiatable">
-                  <intent-filter>
-                      <action android:name="android.media.browse.MediaBrowserService"/>
-                  </intent-filter>
-              </service>
-              <receiver android:name="com.ryanheise.audioservice.MediaButtonReceiver"
-                  android:exported="true" tools:ignore="Instantiatable">
-                  <intent-filter>
-                      <action android:name="android.intent.action.MEDIA_BUTTON"/>
-                  </intent-filter>
-              </receiver>
-          '''
-          s = s.replace('</application>', app + '</application>', 1)
-          p.write_text(s)
+          if p.exists():
+              s = p.read_text()
+              perms = '''
+                  <uses-permission android:name="android.permission.INTERNET"/>
+                  <uses-permission android:name="android.permission.WAKE_LOCK"/>
+                  <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+                  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
+              '''
+              if "xmlns:tools" not in s:
+                  s = re.sub(r'<manifest([^>]*)>', lambda m: '<manifest' + m.group(1) + ' xmlns:tools="http://schemas.android.com/tools">' + perms, s, count=1)
+              app = '''
+                  <meta-data android:name="com.google.android.gms.car.application"
+                      android:resource="@xml/automotive_app_desc"/>
+                  <service android:name="com.ryanheise.audioservice.AudioService"
+                      android:foregroundServiceType="mediaPlayback"
+                      android:exported="true" tools:ignore="Instantiatable">
+                      <intent-filter>
+                          <action android:name="android.media.browse.MediaBrowserService"/>
+                      </intent-filter>
+                  </service>
+                  <receiver android:name="com.ryanheise.audioservice.MediaButtonReceiver"
+                      android:exported="true" tools:ignore="Instantiatable">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MEDIA_BUTTON"/>
+                      </intent-filter>
+                  </receiver>
+              '''
+              if "</application>" in s and "AudioService" not in s:
+                  s = s.replace('</application>', app + '</application>', 1)
+              p.write_text(s)
           EOF
           mkdir -p android/app/src/main/res/xml
-          cp platform_snippets/android/automotive_app_desc.xml android/app/src/main/res/xml/ || true
+          if [ -f "platform_snippets/android/automotive_app_desc.xml" ]; then
+            cp platform_snippets/android/automotive_app_desc.xml android/app/src/main/res/xml/
+          fi
           MAIN=$(find android/app/src/main -name MainActivity.kt)
-          sed -i 's/import io.flutter.embedding.android.FlutterActivity/import com.ryanheise.audioservice.AudioServiceActivity/; s/FlutterActivity()/AudioServiceActivity()/' "$MAIN"
+          if [ -n "$MAIN" ]; then
+            sed -i 's/import io.flutter.embedding.android.FlutterActivity/import com.ryanheise.audioservice.AudioServiceActivity/; s/FlutterActivity()/AudioServiceActivity()/' "$MAIN"
+          fi
 
       - run: flutter pub get
 
