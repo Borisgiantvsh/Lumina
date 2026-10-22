@@ -38,7 +38,7 @@ jobs:
       - name: Fix Dart Errors
         run: |
           python3 - <<'EOF'
-          import pathlib
+          import pathlib, re
 
           # Fix 1: Type error di plugin_host.dart
           p1 = pathlib.Path('lib/core/plugin/plugin_host.dart')
@@ -47,12 +47,12 @@ jobs:
               txt = txt.replace('if (candidate is T) out.add((plugin, candidate));', 'if (candidate is T) out.add((plugin, candidate as T));')
               p1.write_text(txt)
 
-          # Fix 2: Conflict RepeatMode di now_playing_screen.dart
+          # Fix 2: Conflict RepeatMode di now_playing_screen.dart (Beri alias 'pc')
           p2 = pathlib.Path('lib/ui/now_playing/now_playing_screen.dart')
           if p2.exists():
               txt = p2.read_text()
-              txt = txt.replace("import 'package:flutter/src/widgets/repeating_animation_builder.dart';", "// ")
-              txt = txt.replace("import 'package:flutter/widgets.dart' hide RepeatMode;", "import 'package:flutter/widgets.dart';")
+              txt = re.sub(r"(import\s+['\"][^'\"]*player_controller\.dart['\"])", r"\1 as pc", txt)
+              txt = txt.replace('RepeatMode.', 'pc.RepeatMode.')
               p2.write_text(txt)
           EOF
 
