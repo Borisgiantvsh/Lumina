@@ -8,48 +8,79 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Extract zip file properly
+      - name: Extract zip
         run: |
           if [ -f "lumina.zip" ]; then
             mkdir -p temp_unzip
             unzip -q -o lumina.zip -d temp_unzip
-            
-            # Otomatis deteksi folder apa pun di dalam zip dan ratain ke root
             shopt -s dotglob
-            FIRST_DIR=$(ls -d temp_unzip/* | head -n 1)
-            if [ -d "$FIRST_DIR" ]; then
-              cp -rf "$FIRST_DIR"/* .
-            else
-              cp -rf temp_unzip/* .
-            fi
+            cp -rf temp_unzip/*/* .
             rm -rf temp_unzip
           fi
 
-      - name: Set up Java
-        uses: actions/setup-java@v3
+      - uses: actions/setup-java@v4
         with:
-          distribution: 'zulu'
+          distribution: zulu
           java-version: '17'
 
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.x'
-          channel: 'stable'
+          channel: stable
 
-      - name: Install dependencies
-        run: flutter pub get
+      - name: Generate Android project
+        run: |
+          flutter create --platforms=android --org app.lumina --project-name lumina .
+          rm -f test/widget_test.dart
 
-      - name: Build APK Release
+      - name: Patch Android for audio_service and Android Auto
+        run: |
+          python3 - <<'EOF'
+          import pathlib, re
+          p = pathlib.Path('android/app/src/main/AndroidManifest.xml')
+          s = p.read_text()
+          perms = '''
+              <uses-permission android:name="android.permission.INTERNET"/>
+              <uses-permission android:name="android.permission.WAKE_LOCK"/>
+              <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+              <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
+          '''
+          s = re.sub(r'<manifest([^>]*)>',
+                     lambda m: '<manifest' + m.group(1) + ' xmlns:tools="http://schemas.android.com/tools">' + perms,
+                     s, count=1)
+          app = '''
+              <meta-data android:name="com.google.android.gms.car.application"
+                  android:resource="@xml/automotive_app_desc"/>
+              <service android:name="com.ryanheise.audioservice.AudioService"
+                  android:foregroundServiceType="mediaPlayback"
+                  android:exported="true" tools:ignore="Instantiatable">
+                  <intent-filter>
+                      <action android:name="android.media.browse.MediaBrowserService"/>
+                  </intent-filter>
+              </service>
+              <receiver android:name="com.ryanheise.audioservice.MediaButtonReceiver"
+                  android:exported="true" tools:ignore="Instantiatable">
+                  <intent-filter>
+                      <action android:name="android.intent.action.MEDIA_BUTTON"/>
+                  </intent-filter>
+              </receiver>
+          '''
+          s = s.replace('</application>', app + '</application>', 1)
+          p.write_text(s)
+          EOF
+          mkdir -p android/app/src/main/res/xml
+          cp platform_snippets/android/automotive_app_desc.xml android/app/src/main/res/xml/
+          MAIN=$(find android/app/src/main -name MainActivity.kt)
+          sed -i 's/import io.flutter.embedding.android.FlutterActivity/import com.ryanheise.audioservice.AudioServiceActivity/; s/FlutterActivity()/AudioServiceActivity()/' "$MAIN"
+
+      - run: flutter pub get
+
+      - name: Build APK
         run: flutter build apk --release
 
-      - name: Upload APK Artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: release-apk
           path: build/app/outputs/flutter-apk/app-release.apk
