@@ -11,14 +11,14 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Extract zip file
+        
+        - name: Extract zip file
         run: |
           if [ -f "lumina.zip" ]; then
-            unzip -o lumina.zip
-            if [ -d "lumina" ]; then
-              cp -r lumina/* .
-            fi
+            unzip -o lumina.zip -d temp_folder
+            shopt -s dotglob
+            cp -r temp_folder/lumina/* . 2>/dev/null || cp -r temp_folder/* .
+            rm -rf temp_folder
           fi
 
       - name: Set up Java
