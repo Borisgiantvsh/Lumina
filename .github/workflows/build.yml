@@ -17,7 +17,7 @@ jobs:
             mkdir -p temp_unzip
             unzip -q -o lumina.zip -d temp_unzip
             shopt -s dotglob
-            cp -rf temp_unzip/*/* .
+            cp -rf temp_unzip/*/* . 2>/dev/null || cp -rf temp_unzip/* .
             rm -rf temp_unzip
           fi
 
@@ -34,6 +34,27 @@ jobs:
         run: |
           flutter create --platforms=android --org app.lumina --project-name lumina .
           rm -f test/widget_test.dart
+
+      - name: Fix Dart Errors
+        run: |
+          python3 - <<'EOF'
+          import pathlib
+
+          # Fix 1: Type error di plugin_host.dart
+          p1 = pathlib.Path('lib/core/plugin/plugin_host.dart')
+          if p1.exists():
+              txt = p1.read_text()
+              txt = txt.replace('if (candidate is T) out.add((plugin, candidate));', 'if (candidate is T) out.add((plugin, candidate as T));')
+              p1.write_text(txt)
+
+          # Fix 2: Conflict RepeatMode di now_playing_screen.dart
+          p2 = pathlib.Path('lib/ui/now_playing/now_playing_screen.dart')
+          if p2.exists():
+              txt = p2.read_text()
+              txt = txt.replace("import 'package:flutter/src/widgets/repeating_animation_builder.dart';", "// ")
+              txt = txt.replace("import 'package:flutter/widgets.dart' hide RepeatMode;", "import 'package:flutter/widgets.dart';")
+              p2.write_text(txt)
+          EOF
 
       - name: Patch Android for audio_service and Android Auto
         run: |
@@ -71,7 +92,7 @@ jobs:
           p.write_text(s)
           EOF
           mkdir -p android/app/src/main/res/xml
-          cp platform_snippets/android/automotive_app_desc.xml android/app/src/main/res/xml/
+          cp platform_snippets/android/automotive_app_desc.xml android/app/src/main/res/xml/ || true
           MAIN=$(find android/app/src/main -name MainActivity.kt)
           sed -i 's/import io.flutter.embedding.android.FlutterActivity/import com.ryanheise.audioservice.AudioServiceActivity/; s/FlutterActivity()/AudioServiceActivity()/' "$MAIN"
 
