@@ -19,10 +19,11 @@ jobs:
             mkdir -p temp_unzip
             unzip -q -o lumina.zip -d temp_unzip
             
-            # Pindahin semua file walaupun berada dalam subfolder lumina
+            # Otomatis deteksi folder apa pun di dalam zip dan ratain ke root
             shopt -s dotglob
-            if [ -d "temp_unzip/lumina" ]; then
-              cp -rf temp_unzip/lumina/* .
+            FIRST_DIR=$(ls -d temp_unzip/* | head -n 1)
+            if [ -d "$FIRST_DIR" ]; then
+              cp -rf "$FIRST_DIR"/* .
             else
               cp -rf temp_unzip/* .
             fi
