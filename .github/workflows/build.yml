@@ -3,6 +3,7 @@ name: Build Flutter APK
 on:
   push:
     branches: [ main, master ]
+  workflow_dispatch:
 
 jobs:
   build:
@@ -11,14 +12,21 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        
-        - name: Extract zip file
+
+      - name: Extract zip file properly
         run: |
           if [ -f "lumina.zip" ]; then
-            unzip -o lumina.zip -d temp_folder
+            mkdir -p temp_unzip
+            unzip -q -o lumina.zip -d temp_unzip
+            
+            # Pindahin semua file termasuk hidden file
             shopt -s dotglob
-            cp -r temp_folder/lumina/* . 2>/dev/null || cp -r temp_folder/* .
-            rm -rf temp_folder
+            if [ -d "temp_unzip/lumina" ]; then
+              cp -rn temp_unzip/lumina/* .
+            else
+              cp -rn temp_unzip/* .
+            fi
+            rm -rf temp_unzip
           fi
 
       - name: Set up Java
