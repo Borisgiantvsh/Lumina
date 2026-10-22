@@ -19,12 +19,12 @@ jobs:
             mkdir -p temp_unzip
             unzip -q -o lumina.zip -d temp_unzip
             
-            # Pindahin semua file termasuk hidden file
+            # Pindahin semua file walaupun berada dalam subfolder lumina
             shopt -s dotglob
             if [ -d "temp_unzip/lumina" ]; then
-              cp -rn temp_unzip/lumina/* .
+              cp -rf temp_unzip/lumina/* .
             else
-              cp -rn temp_unzip/* .
+              cp -rf temp_unzip/* .
             fi
             rm -rf temp_unzip
           fi
